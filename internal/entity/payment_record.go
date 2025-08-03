@@ -15,10 +15,10 @@ const (
 )
 
 type PaymentRecord struct {
-	ID          uuid.UUID            `json:"id"`
-	Tag         string               `json:"tag"`
-	Amount      valueobject.BigFloat `json:"amount"`
-	Status      PaymentStatus         `json:"status"`
-	CreatedAt   *time.Time           `json:"created_at"`
-	UpdatedAt   *time.Time           `json:"updated_at"
+	ID        uuid.UUID            `json:"id"`
+	Tag       string               `json:"tag"`
+	Amount    valueobject.BigFloat `json:"amount"`
+	Status    PaymentStatus        `json:"status"`
+	CreatedAt *time.Time           `json:"created_at"`
+	UpdatedAt *time.Time           `json:"updated_at"`
 }

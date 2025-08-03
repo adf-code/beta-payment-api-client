@@ -36,12 +36,12 @@ func InitLoggerWithTelemetry(cfg *config.AppConfig) zerolog.Logger {
 }
 
 func (t *TelemetryClient) Write(p []byte) (n int, err error) {
-	req, err := http.NewRequest("POST", w.endpoint, bytes.NewBuffer(p))
+	req, err := http.NewRequest("POST", t.endpoint, bytes.NewBuffer(p))
 	if err != nil {
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+w.apiKey)
+	req.Header.Set("Authorization", "Bearer "+t.apiKey)
 
 	resp, err := t.client.Do(req)
 	if err != nil {

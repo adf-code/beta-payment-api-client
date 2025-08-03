@@ -49,7 +49,7 @@ func main() {
 
 	// Repository and HTTP handler
 	paymentRecordRepo := repository.NewPaymentRecordRepository(redis)
-	paymentRecordUC := usecase.NewPaymentCheckUsecase(paymentRecordRepo)
+	paymentRecordUC := usecase.NewPaymentRecordUsecase(paymentRecordRepo)
 	handler := deliveryHttp.SetupHandler(paymentRecordUC, logger)
 
 	// HTTP server config

@@ -4,11 +4,9 @@ import (
 	"beta-payment-api-client/internal/dto"
 	"beta-payment-api-client/internal/entity"
 	"beta-payment-api-client/internal/repository"
-	"beta-payment-api-client/internal/valueobject"
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
-	"math/big"
 	"net/http"
 )
 
@@ -20,7 +18,7 @@ type paymentRecordUseCase struct {
 	repo repository.PaymentRecordRepository
 }
 
-func NewPaymentCheckUsecase(repo repository.PaymentRecordRepository) PaymentRecordUseCase {
+func NewPaymentRecordUsecase(repo repository.PaymentRecordRepository) PaymentRecordUseCase {
 	return &paymentRecordUseCase{repo: repo}
 }
 
@@ -46,7 +44,6 @@ func (uc *paymentRecordUseCase) Check(paymentID string) (*entity.PaymentRecord, 
 	result := &entity.PaymentRecord{
 		ID:        idParsed,
 		Tag:       body.Data.Tag,
-		Amount:    valueobject.BigFloat{big.NewFloat(body.Data.Amount)},
 		Status:    entity.PaymentStatus(body.Data.Status),
 		CreatedAt: &body.Data.CreatedAt,
 		UpdatedAt: &body.Data.UpdatedAt,

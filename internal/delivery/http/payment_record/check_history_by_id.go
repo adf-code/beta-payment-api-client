@@ -1,7 +1,6 @@
 package payment_record
 
 import (
-	"beta-payment-api-client/internal/delivery/request"
 	"beta-payment-api-client/internal/delivery/response"
 	"net/http"
 )
@@ -37,15 +36,7 @@ import (
 // @Success      200     {object}  response.APIResponse
 // @Failure      500     {object}  response.APIResponse
 // @Router       /books [get]
-func (h *BookHandler) GetAll(w http.ResponseWriter, r *http.Request) {
-	h.Logger.Info().Msg("📥 Incoming GetAll request")
-	params := request.ParseBookQueryParams(r)
-	books, err := h.BookUC.GetAll(r.Context(), params)
-	if err != nil {
-		h.Logger.Error().Err(err).Msg("❌ Failed to fetch books, general")
-		response.FailedWithMeta(w, 500, "books", "getAllBooks", "Error Get All Books", nil)
-		return
-	}
-	h.Logger.Info().Int("count", len(books)).Msg("✅ Successfully fetched books")
-	response.SuccessWithMeta(w, 200, "books", "getAllBooks", "Success Get All Books", &params, books)
+func (p *PaymentRecordHandler) CheckHistoryByID(w http.ResponseWriter, r *http.Request) {
+	p.Logger.Info().Msg("📥 Incoming GetByID request")
+	response.Success(w, 200, "paymentRecords", "checkPaymentRecordByID", "Success Check Payment Record by ID", nil)
 }

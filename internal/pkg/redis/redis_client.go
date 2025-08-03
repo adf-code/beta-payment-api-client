@@ -6,24 +6,25 @@ import (
 	"fmt"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
+	"log"
 	"sync"
 )
 
 type RedisClient struct {
-	redisHost string
-	redisPort string
-	redisPass string
-	client    *redis.Client
-	logger    zerolog.Logger
-	once      sync.Once
+	redisHost     string
+	redisPort     string
+	redisPassword string
+	client        *redis.Client
+	logger        zerolog.Logger
+	once          sync.Once
 }
 
 func NewRedisClient(cfg *config.AppConfig, logger zerolog.Logger) *RedisClient {
 	return &RedisClient{
-		redisHost: cfg.RedisHost,
-		redisPort: cfg.RedisPort,
-		redisPass: cfg.RedisPassword,
-		logger:    logger,
+		redisHost:     cfg.RedisHost,
+		redisPort:     cfg.RedisPort,
+		redisPassword: cfg.RedisPassword,
+		logger:        logger,
 	}
 }
 
@@ -33,9 +34,11 @@ func (r *RedisClient) InitRedis() *redis.Client {
 
 		r.client = redis.NewClient(&redis.Options{
 			Addr:     addr,
-			Password: r.redisPass, // 🔐 add password if set
-			DB:       0,           // default DB
+			Password: r.redisPassword, // 🔐 add password if set
+			DB:       0,               // default DB
 		})
+
+		log.Println(addr, r.redisPassword)
 
 		if err := r.client.Ping(context.Background()).Err(); err != nil {
 			r.logger.Fatal().Err(err).Msg("❌ Failed to connect Redis")
