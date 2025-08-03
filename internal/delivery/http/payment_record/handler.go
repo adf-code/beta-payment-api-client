@@ -6,11 +6,11 @@ import (
 )
 
 type PaymentRecordHandler struct {
-	PaymentRecordUC usecase.PaymentRecordUsecase
+	PaymentRecordUC usecase.PaymentRecordUseCase
 	Logger          zerolog.Logger
 	//EmailClient *mail.SendGridClient
 }
 
-func NewPaymentRecordHandler(paymentRecord usecase.PaymentRecordUseCase, logger zerolog.Logger) *BookHandler {
+func NewPaymentRecordHandler(paymentRecord usecase.PaymentRecordUseCase, logger zerolog.Logger) *PaymentRecordHandler {
 	return &PaymentRecordHandler{PaymentRecordUC: paymentRecord, Logger: logger}
 }

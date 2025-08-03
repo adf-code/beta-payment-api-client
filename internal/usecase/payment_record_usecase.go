@@ -12,19 +12,19 @@ import (
 	"net/http"
 )
 
-type PaymentRecordUsecase interface {
+type PaymentRecordUseCase interface {
 	Check(paymentID string) (*entity.PaymentRecord, error)
 }
 
-type paymentRecordUsecase struct {
+type paymentRecordUseCase struct {
 	repo repository.PaymentRecordRepository
 }
 
-func NewPaymentCheckUsecase(repo repository.PaymentRecordRepository) PaymentRecordUsecase {
-	return &paymentRecordUsecase{repo: repo}
+func NewPaymentCheckUsecase(repo repository.PaymentRecordRepository) PaymentRecordUseCase {
+	return &paymentRecordUseCase{repo: repo}
 }
 
-func (uc *paymentRecordUsecase) Check(paymentID string) (*entity.PaymentRecord, error) {
+func (uc *paymentRecordUseCase) Check(paymentID string) (*entity.PaymentRecord, error) {
 	url := fmt.Sprintf("http://localhost:8080/api/v1/payments/%s", paymentID)
 
 	resp, err := http.Get(url)

@@ -6,7 +6,6 @@
 // @contact.url    https://github.com/adf-code
 
 // @host      localhost:8080
-// @BasePath  /api/v1
 
 // @securityDefinitions.apikey BearerAuth
 // @in header
@@ -51,7 +50,7 @@ func main() {
 	// Repository and HTTP handler
 	paymentRecordRepo := repository.NewPaymentRecordRepository(redis)
 	paymentRecordUC := usecase.NewPaymentCheckUsecase(paymentRecordRepo)
-	handler := deliveryHttp.SetupHandler(bookUC, bookCoverUC, logger)
+	handler := deliveryHttp.SetupHandler(paymentRecordUC, logger)
 
 	// HTTP server config
 	server := &http.Server{
