@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
-	"log"
 	"sync"
 )
 
@@ -38,13 +37,11 @@ func (r *RedisClient) InitRedis() *redis.Client {
 			DB:       0,               // default DB
 		})
 
-		log.Println(addr, r.redisPassword)
-
 		if err := r.client.Ping(context.Background()).Err(); err != nil {
 			r.logger.Fatal().Err(err).Msg("❌ Failed to connect Redis")
 		}
 
-		r.logger.Info().Msgf("✅ Connected to Redis at %s", addr)
+		r.logger.Info().Msgf("✅ Connected to Redis successfully")
 	})
 
 	return r.client

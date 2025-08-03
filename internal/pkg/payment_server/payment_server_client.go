@@ -9,28 +9,34 @@ import (
 
 type PaymentServerClient struct {
 	baseURL string
-	bearer  string
+	apiKey  string
 	logger  zerolog.Logger
 }
 
 func NewPaymentServerClient(cfg *config.AppConfig, logger zerolog.Logger) *PaymentServerClient {
 	return &PaymentServerClient{
-		baseURL: cfg.RedisHost,
-		bearer:  cfg.RedisPort,
+		baseURL: cfg.PaymentServerBaseURL,
+		apiKey:  cfg.PaymentServerAPIKey,
 		logger:  logger,
 	}
 }
 
-func (p *PaymentServerClient) InitPaymentServer() {
-	url := fmt.Sprintf("%s/healtz", p.baseURL)
+func (p *PaymentServerClient) InitPaymentServer() error {
+	url := fmt.Sprintf("%s/healthz", p.baseURL)
 
 	resp, err := http.Get(url)
 	if err != nil {
-		p.logger.Fatal().Err(err).Msgf("❌ Error to connect to Payment Server: %v", err)
+		p.logger.Error().Err(err).Msgf("❌ Error connecting to Payment Server: %v", err)
+		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		p.logger.Fatal().Err(err).Msgf("❌ Failed to connect to Payment Server: %v", err)
+		err := fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		p.logger.Error().Err(err).Msg("❌ Failed to connect to Payment Server")
+		return err
 	}
+
+	p.logger.Info().Msgf("✅ Payment Server is healthy at %s", url)
+	return nil
 }
