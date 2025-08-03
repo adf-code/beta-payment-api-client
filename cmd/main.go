@@ -20,6 +20,7 @@ import (
 	deliveryHttp "beta-payment-api-client/internal/delivery/http"
 	pkgDatabase "beta-payment-api-client/internal/pkg/database"
 	pkgLogger "beta-payment-api-client/internal/pkg/logger"
+	pkgPaymentServer "beta-payment-api-client/internal/pkg/payment_server"
 	pkgRedis "beta-payment-api-client/internal/pkg/redis"
 	"beta-payment-api-client/internal/repository"
 	"beta-payment-api-client/internal/usecase"
@@ -42,10 +43,18 @@ func main() {
 	cfg := config.LoadConfig()
 
 	logger := pkgLogger.InitLoggerWithTelemetry(cfg)
+
 	postgresClient := pkgDatabase.NewPostgresClient(cfg, logger)
 	db := postgresClient.InitPostgresDB()
+
 	redisClient := pkgRedis.NewRedisClient(cfg, logger)
 	redis := redisClient.InitRedis()
+
+	paymentServerClient := pkgPaymentServer.NewPaymentServerClient(cfg, logger)
+	err := paymentServerClient.InitPaymentServer()
+	if err != nil {
+		logger.Fatal().Err(err).Msgf("❌ Error to connect to Payment Server: %v", err)
+	}
 
 	// Repository and HTTP handler
 	paymentRecordRepo := repository.NewPaymentRecordRepository(redis)
