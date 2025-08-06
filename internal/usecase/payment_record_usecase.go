@@ -1,57 +1,97 @@
 package usecase
 
 import (
-	"beta-payment-api-client/internal/dto"
-	"beta-payment-api-client/internal/entity"
 	"beta-payment-api-client/internal/repository"
-	"encoding/json"
-	"fmt"
+	"context"
 	"github.com/google/uuid"
-	"net/http"
+	"log"
+	"sync"
+	"time"
 )
 
 type PaymentRecordUseCase interface {
-	Check(paymentID string) (*entity.PaymentRecord, error)
+	StartPolling(ctx context.Context, id uuid.UUID) error
+	StartConsumer(ctx context.Context) error
+	BoostOtherTasks(id uuid.UUID) error
 }
 
 type paymentRecordUseCase struct {
-	repo repository.PaymentRecordRepository
+	repo  repository.PaymentRecordRepository
+	tasks sync.Map
 }
 
-func NewPaymentRecordUsecase(repo repository.PaymentRecordRepository) PaymentRecordUseCase {
+func NewPaymentRecordUseCase(repo repository.PaymentRecordRepository) PaymentRecordUseCase {
 	return &paymentRecordUseCase{repo: repo}
 }
 
-func (uc *paymentRecordUseCase) Check(paymentID string) (*entity.PaymentRecord, error) {
-	url := fmt.Sprintf("http://localhost:8080/api/v1/payments/%s", paymentID)
+func (u *paymentRecordUseCase) StartPolling(ctx context.Context, id uuid.UUID) error {
+	go func() {
+		delay := 10 * time.Second
+		maxDelay := 60 * time.Second
 
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				log.Println("Polling:", id)
+				status, err := u.repo.FetchPaymentStatus(ctx, id)
+				if err != nil {
+					log.Println("Fetch error:", err)
+				}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
-	}
+				if status == "PAID" || status == "UNPAID" {
+					log.Printf("Finalized: %s -> %s", id, status)
+					_ = u.repo.PublishSuccessEvent(ctx, id)
+					return
+				}
 
-	var body dto.GetPaymentByIDResponse
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return nil, err
-	}
+				_ = u.repo.SetNextRetry(ctx, id, delay)
+				time.Sleep(delay)
 
-	idParsed, _ := uuid.Parse(body.Data.ID)
-	result := &entity.PaymentRecord{
-		ID:        idParsed,
-		Tag:       body.Data.Tag,
-		Status:    entity.PaymentStatus(body.Data.Status),
-		CreatedAt: &body.Data.CreatedAt,
-		UpdatedAt: &body.Data.UpdatedAt,
-	}
+				if delay < maxDelay {
+					delay *= 2
+				}
+			}
+		}
+	}()
+	u.tasks.Store(id, true)
+	return nil
+}
 
-	if err := uc.repo.Store(paymentID, *result); err != nil {
-		return nil, err
-	}
+func (u *paymentRecordUseCase) BoostOtherTasks(id uuid.UUID) error {
+	u.tasks.Range(func(key, _ interface{}) bool {
+		paymentID := key.(uuid.UUID)
+		if paymentID != id {
+			go u.StartPolling(context.Background(), paymentID)
+		}
+		return true
+	})
+	return nil
+}
 
-	return result, nil
+func (u *paymentRecordUseCase) StartConsumer(ctx context.Context) error {
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				log.Println("Kafka consumer stopped")
+				return
+			default:
+				paymentIDStr, err := u.repo.ReadKafkaMessage(ctx)
+				if err != nil {
+					log.Println("Kafka error:", err)
+					continue
+				}
+				paymentID, err := uuid.Parse(paymentIDStr)
+				if err != nil {
+					log.Println("Invalid UUID:", paymentIDStr)
+					continue
+				}
+				log.Println("Boost triggered by:", paymentID)
+				_ = u.BoostOtherTasks(paymentID)
+			}
+		}
+	}()
+	return nil
 }
