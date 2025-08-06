@@ -24,11 +24,12 @@ type PaymentStatus struct {
 }
 
 type PaymentRecordRepository interface {
-	Store(paymentID string, result entity.PaymentRecord) error
+	Store(ctx context.Context, paymentID string, result entity.PaymentRecord) error
 	SetNextRetry(ctx context.Context, id uuid.UUID, delay time.Duration) error
 	GetNextRetry(ctx context.Context, id uuid.UUID) (time.Time, error)
-	StartPolling(ctx context.Context, id uuid.UUID) error
-	StartConsumer(ctx context.Context) error
+	PublishSuccessEvent(ctx context.Context, id uuid.UUID) error
+	FetchPaymentStatus(ctx context.Context, id uuid.UUID) (string, error)
+	ReadKafkaMessage(ctx context.Context) (string, error)
 }
 
 type paymentRecordRepoRedis struct {
@@ -53,156 +54,82 @@ func NewPaymentRecordRepository(redisClient *redis.Client,
 	}
 }
 
-func (r *paymentRecordRepoRedis) Store(paymentID string, result entity.PaymentRecord) error {
-	ctx := context.Background()
+func (p *paymentRecordRepoRedis) Store(ctx context.Context, paymentID string, result entity.PaymentRecord) error {
 	key := fmt.Sprintf("payment-check:%s:history", paymentID)
-
 	data, err := json.Marshal(result)
 	if err != nil {
 		return err
 	}
-
-	return r.redisClient.RPush(ctx, key, data).Err()
+	return p.redisClient.RPush(ctx, key, data).Err()
 }
 
-func (r *paymentRecordRepoRedis) SetNextRetry(ctx context.Context, id uuid.UUID, delay time.Duration) error {
-	return r.redisClient.Set(ctx, fmt.Sprintf("retry:%s", id), time.Now().Add(delay).Unix(), delay).Err()
+func (p *paymentRecordRepoRedis) SetNextRetry(ctx context.Context, id uuid.UUID, delay time.Duration) error {
+	key := fmt.Sprintf("retry:%s", id.String())
+	value := time.Now().Add(delay).Unix()
+	return p.redisClient.Set(ctx, key, value, delay).Err()
 }
 
-func (r *paymentRecordRepoRedis) GetNextRetry(ctx context.Context, id uuid.UUID) (time.Time, error) {
-	timestamp, err := r.redisClient.Get(ctx, fmt.Sprintf("retry:%s", id)).Int64()
+func (p *paymentRecordRepoRedis) GetNextRetry(ctx context.Context, id uuid.UUID) (time.Time, error) {
+	key := fmt.Sprintf("retry:%s", id.String())
+	timestamp, err := p.redisClient.Get(ctx, key).Int64()
 	if err != nil {
 		return time.Time{}, err
 	}
 	return time.Unix(timestamp, 0), nil
 }
 
-func (p *paymentRecordRepoRedis) PublishSuccessEvent(id uuid.UUID) error {
-	log.Println("⁉️ nilai topics", p.KafkaTopicPaymentSuccess)
+func (p *paymentRecordRepoRedis) PublishSuccessEvent(ctx context.Context, id uuid.UUID) error {
 	msg := kafka.Message{
 		Key:   []byte(fmt.Sprintf("%s", p.KafkaTopicPaymentSuccess)),
 		Value: []byte(id.String()),
 	}
-	err := p.kafkaProducerClient.Writer.WriteMessages(context.Background(), msg)
+	err := p.kafkaProducerClient.Writer.WriteMessages(ctx, msg)
 	if err != nil {
-		log.Println("Error publishing:", err)
+		log.Println("Error publishing Kafka message:", err)
 		return err
 	}
-	log.Println("Successfully published message:", msg.Value)
+	log.Println("✅ Kafka message published:", msg.Value)
 	return nil
 }
 
-func (p *paymentRecordRepoRedis) StartPolling(ctx context.Context, id uuid.UUID) error {
-	go func() {
-		delay := 10 * time.Second
-		maxDelay := 60 * time.Second
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				log.Println("Checking:", id)
-
-				status, err := fetchStatus(id, p.paymentServerAPIKey)
-				if err != nil {
-					log.Println("Fetch error:", err)
-				}
-
-				if status == "PAID" || status == "UNPAID" {
-					log.Printf("Payment %s finalized: %s", id, status)
-					_ = p.PublishSuccessEvent(id)
-					return
-				}
-
-				_ = p.SetNextRetry(ctx, id, delay)
-				time.Sleep(delay)
-
-				if delay < maxDelay {
-					delay *= 2
-				}
-			}
-		}
-	}()
-	tasks.Store(id, true)
-	return nil
-}
-
-func fetchStatus(id uuid.UUID, paymentServerAPIKey string) (string, error) {
-	url := fmt.Sprintf("http://localhost:8080/api/v1/payments/%s", id)
-
-	req, err := http.NewRequest("GET", url, nil)
+func (p *paymentRecordRepoRedis) ReadKafkaMessage(ctx context.Context) (string, error) {
+	msg, err := p.kafkaConsumerClient.Reader.ReadMessage(ctx)
 	if err != nil {
-		log.Println("request creation error:", err)
 		return "", err
 	}
+	return string(msg.Value), nil
+}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", paymentServerAPIKey))
+func (p *paymentRecordRepoRedis) FetchPaymentStatus(ctx context.Context, id uuid.UUID) (string, error) {
+	url := fmt.Sprintf("http://localhost:8080/api/v1/payments/%s", id.String())
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		log.Println("❌ Failed to create request:", err)
+		return "", err
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", p.paymentServerAPIKey))
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		log.Println("❌ HTTP request failed:", err)
 		return "", err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("error reading body:", err)
+		log.Println("❌ Failed to read body:", err)
 		return "", err
 	}
 
-	log.Println("RAW JSON:", string(body))
+	log.Println("📦 Payment API response:", string(body))
 
 	var result dto.GetPaymentByIDResponse
-	err = json.Unmarshal(body, &result)
+	if err := json.Unmarshal(body, &result); err != nil {
+		log.Println("❌ Failed to unmarshal JSON:", err)
+		return "", err
+	}
 
-	return result.Data.Status, err
-}
-
-func (p *paymentRecordRepoRedis) BoostOtherTasks(id uuid.UUID) error {
-	tasks.Range(func(key, _ interface{}) bool {
-		paymentID := key.(uuid.UUID)
-		if paymentID != id {
-			go p.StartPolling(context.Background(), paymentID)
-		}
-		return true
-	})
-	return nil
-}
-
-func (p *paymentRecordRepoRedis) StartConsumer(ctx context.Context) error {
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				log.Println("Kafka consumer stopped by context")
-				return
-			default:
-				msg, err := p.kafkaConsumerClient.Reader.ReadMessage(ctx) // pass ctx
-				if err != nil {
-					// If context was canceled, exit
-					if ctx.Err() != nil {
-						log.Println("Kafka consumer exiting due to context:", ctx.Err())
-						return
-					}
-					log.Println("Kafka read error:", err)
-					continue
-				}
-
-				// Parse payment ID
-				paymentIDStr := string(msg.Value)
-				paymentID, err := uuid.Parse(paymentIDStr)
-				if err != nil {
-					log.Println("Invalid UUID from Kafka message:", paymentIDStr, "error:", err)
-					continue
-				}
-
-				log.Println("Boost triggered by:", paymentID)
-				if err := p.BoostOtherTasks(paymentID); err != nil {
-					log.Println("BoostOtherTasks error:", err)
-				}
-			}
-		}
-	}()
-	return nil
+	return result.Data.Status, nil
 }
