@@ -7,21 +7,24 @@ import (
 )
 
 type AppConfig struct {
-	Port                 string
-	DBHost               string
-	DBPort               string
-	DBUser               string
-	DBPassword           string
-	DBName               string
-	DBSSLMode            string
-	Env                  string
-	TelemetryAPIKey      string
-	TelemetryEndpoint    string
-	RedisHost            string
-	RedisPort            string
-	RedisPassword        string
-	PaymentServerBaseURL string
-	PaymentServerAPIKey  string
+	Port                     string
+	DBHost                   string
+	DBPort                   string
+	DBUser                   string
+	DBPassword               string
+	DBName                   string
+	DBSSLMode                string
+	Env                      string
+	TelemetryAPIKey          string
+	TelemetryEndpoint        string
+	RedisHost                string
+	RedisPort                string
+	RedisPassword            string
+	PaymentServerBaseURL     string
+	PaymentServerAPIKey      string
+	KafkaHost                string
+	KafkaPort                string
+	KafkaTopicPaymentSuccess string
 }
 
 func LoadConfig() *AppConfig {
@@ -31,21 +34,24 @@ func LoadConfig() *AppConfig {
 	}
 
 	return &AppConfig{
-		Env:                  getEnv("ENV", "development"),
-		Port:                 getEnv("APP_PORT", "8080"),
-		DBHost:               getEnv("DB_HOST", "localhost"),
-		DBPort:               getEnv("DB_PORT", "5432"),
-		DBUser:               getEnv("DB_USER", "postgres"),
-		DBPassword:           getEnv("DB_PASSWORD", ""),
-		DBName:               getEnv("DB_NAME", "bookdb"),
-		DBSSLMode:            getEnv("DB_SSLMODE", "disable"),
-		TelemetryAPIKey:      getEnv("TELEMETRY_API_KEY", "not_set"),
-		TelemetryEndpoint:    getEnv("TELEMETRY_ENDPOINT", "not_set"),
-		RedisHost:            getEnv("REDIS_HOST", "not_set"),
-		RedisPort:            getEnv("REDIS_PORT", "not_set"),
-		RedisPassword:        getEnv("REDIS_PASSWORD", "not_set"),
-		PaymentServerBaseURL: getEnv("PAYMENT_SERVER_BASE_URL", "not_set"),
-		PaymentServerAPIKey:  getEnv("PAYMENT_SERVER_API_KEY", "not_set"),
+		Env:                      getEnv("ENV", "development"),
+		Port:                     getEnv("APP_PORT", "8080"),
+		DBHost:                   getEnv("DB_HOST", "localhost"),
+		DBPort:                   getEnv("DB_PORT", "5432"),
+		DBUser:                   getEnv("DB_USER", "postgres"),
+		DBPassword:               getEnv("DB_PASSWORD", ""),
+		DBName:                   getEnv("DB_NAME", "bookdb"),
+		DBSSLMode:                getEnv("DB_SSLMODE", "disable"),
+		TelemetryAPIKey:          getEnv("TELEMETRY_API_KEY", "not_set"),
+		TelemetryEndpoint:        getEnv("TELEMETRY_ENDPOINT", "not_set"),
+		RedisHost:                getEnv("REDIS_HOST", "not_set"),
+		RedisPort:                getEnv("REDIS_PORT", "not_set"),
+		RedisPassword:            getEnv("REDIS_PASSWORD", "not_set"),
+		PaymentServerBaseURL:     getEnv("PAYMENT_SERVER_BASE_URL", "not_set"),
+		PaymentServerAPIKey:      getEnv("PAYMENT_SERVER_API_KEY", "not_set"),
+		KafkaHost:                getEnv("KAFKA_HOST", "not_set"),
+		KafkaPort:                getEnv("KAFKA_PORT", "not_set"),
+		KafkaTopicPaymentSuccess: getEnv("KAFKA_TOPIC_PAYMENT_SUCCESS", "not_set"),
 	}
 }
 
