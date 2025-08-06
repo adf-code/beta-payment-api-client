@@ -24,7 +24,7 @@ type PaymentStatus struct {
 }
 
 type PaymentRecordRepository interface {
-	Store(ctx context.Context, paymentID string, result entity.PaymentRecord) error
+	Store(ctx context.Context, paymentID string, paymentRecord entity.PaymentRecord) error
 	SetNextRetry(ctx context.Context, id uuid.UUID, delay time.Duration) error
 	GetNextRetry(ctx context.Context, id uuid.UUID) (time.Time, error)
 	PublishSuccessEvent(ctx context.Context, id uuid.UUID) error
@@ -54,9 +54,9 @@ func NewPaymentRecordRepository(redisClient *redis.Client,
 	}
 }
 
-func (p *paymentRecordRepoRedis) Store(ctx context.Context, paymentID string, result entity.PaymentRecord) error {
+func (p *paymentRecordRepoRedis) Store(ctx context.Context, paymentID string, paymentRecord entity.PaymentRecord) error {
 	key := fmt.Sprintf("payment-check:%s:history", paymentID)
-	data, err := json.Marshal(result)
+	data, err := json.Marshal(paymentRecord)
 	if err != nil {
 		return err
 	}

@@ -16,12 +16,12 @@ type PaymentRecordUseCase interface {
 }
 
 type paymentRecordUseCase struct {
-	repo  repository.PaymentRecordRepository
-	tasks sync.Map
+	paymentRecordRepo repository.PaymentRecordRepository
+	tasks             sync.Map
 }
 
-func NewPaymentRecordUseCase(repo repository.PaymentRecordRepository) PaymentRecordUseCase {
-	return &paymentRecordUseCase{repo: repo}
+func NewPaymentRecordUseCase(paymentRecordRepo repository.PaymentRecordRepository) PaymentRecordUseCase {
+	return &paymentRecordUseCase{paymentRecordRepo: paymentRecordRepo}
 }
 
 func (u *paymentRecordUseCase) StartPolling(ctx context.Context, id uuid.UUID) error {
@@ -35,18 +35,18 @@ func (u *paymentRecordUseCase) StartPolling(ctx context.Context, id uuid.UUID) e
 				return
 			default:
 				log.Println("Polling:", id)
-				status, err := u.repo.FetchPaymentStatus(ctx, id)
+				status, err := u.paymentRecordRepo.FetchPaymentStatus(ctx, id)
 				if err != nil {
 					log.Println("Fetch error:", err)
 				}
 
 				if status == "PAID" || status == "UNPAID" {
 					log.Printf("Finalized: %s -> %s", id, status)
-					_ = u.repo.PublishSuccessEvent(ctx, id)
+					_ = u.paymentRecordRepo.PublishSuccessEvent(ctx, id)
 					return
 				}
 
-				_ = u.repo.SetNextRetry(ctx, id, delay)
+				_ = u.paymentRecordRepo.SetNextRetry(ctx, id, delay)
 				time.Sleep(delay)
 
 				if delay < maxDelay {
@@ -78,7 +78,7 @@ func (u *paymentRecordUseCase) StartConsumer(ctx context.Context) error {
 				log.Println("Kafka consumer stopped")
 				return
 			default:
-				paymentIDStr, err := u.repo.ReadKafkaMessage(ctx)
+				paymentIDStr, err := u.paymentRecordRepo.ReadKafkaMessage(ctx)
 				if err != nil {
 					log.Println("Kafka error:", err)
 					continue

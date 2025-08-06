@@ -25,7 +25,7 @@ func SetupHandler(paymentRecordUC usecase.PaymentRecordUseCase, logger zerolog.L
 	r.Handle("GET", "/healthz", middleware.Chain(log)(healthHandler.Check))
 
 	//r.Handle("GET", "/api/v1/payment-records/check/histories/{id}", middleware.Chain(log, auth)(paymentRecordHandler.))
-	r.Handle("GET", "/api/v1/payment-records/check/{id}", middleware.Chain(log, auth)(paymentRecordHandler.CheckByID))
+	r.Handle("POST", "/api/v1/payment-records/check/{id}", middleware.Chain(log, auth)(paymentRecordHandler.CheckByID))
 
 	return r
 }
