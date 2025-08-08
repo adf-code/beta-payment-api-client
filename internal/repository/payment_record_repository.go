@@ -5,6 +5,7 @@ import (
 	"beta-payment-api-client/internal/entity"
 	pkgKafka "beta-payment-api-client/internal/pkg/kafka"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
@@ -24,18 +25,22 @@ type PaymentStatus struct {
 }
 
 type PaymentRecordRepository interface {
-	Store(ctx context.Context, paymentID string, paymentRecord entity.PaymentRecord) error
 	SetNextRetry(ctx context.Context, id uuid.UUID, delay time.Duration) error
 	GetNextRetry(ctx context.Context, id uuid.UUID) (time.Time, error)
 	PublishSuccessEvent(ctx context.Context, id uuid.UUID) error
 	FetchPaymentStatus(ctx context.Context, id uuid.UUID) (string, error)
 	ReadKafkaMessage(ctx context.Context) (string, error)
+	Store(ctx context.Context, tx *sql.Tx, payment *entity.PaymentRecord) error
+	FetchByID(ctx context.Context, id uuid.UUID) (*entity.PaymentRecord, error)
+	FetchByIDRedis(ctx context.Context, id uuid.UUID) (int64, error)
+	StoreRedis(ctx context.Context, id uuid.UUID) error
 }
 
 type paymentRecordRepoRedis struct {
 	redisClient              *redis.Client
 	kafkaProducerClient      *pkgKafka.KafkaProducerClient
 	kafkaConsumerClient      *pkgKafka.KafkaConsumerClient
+	DB                       *sql.DB
 	paymentServerAPIKey      string
 	KafkaTopicPaymentSuccess string
 }
@@ -43,24 +48,17 @@ type paymentRecordRepoRedis struct {
 func NewPaymentRecordRepository(redisClient *redis.Client,
 	kafkaProducerClient *pkgKafka.KafkaProducerClient,
 	kafkaConsumerClient *pkgKafka.KafkaConsumerClient,
+	db *sql.DB,
 	paymentServerAPIKey string,
 	KafkaTopicPaymentSuccess string) PaymentRecordRepository {
 	return &paymentRecordRepoRedis{
 		redisClient:              redisClient,
 		kafkaProducerClient:      kafkaProducerClient,
 		kafkaConsumerClient:      kafkaConsumerClient,
+		DB:                       db,
 		paymentServerAPIKey:      paymentServerAPIKey,
 		KafkaTopicPaymentSuccess: KafkaTopicPaymentSuccess,
 	}
-}
-
-func (p *paymentRecordRepoRedis) Store(ctx context.Context, paymentID string, paymentRecord entity.PaymentRecord) error {
-	key := fmt.Sprintf("payment-check:%s:history", paymentID)
-	data, err := json.Marshal(paymentRecord)
-	if err != nil {
-		return err
-	}
-	return p.redisClient.RPush(ctx, key, data).Err()
 }
 
 func (p *paymentRecordRepoRedis) SetNextRetry(ctx context.Context, id uuid.UUID, delay time.Duration) error {
@@ -132,4 +130,33 @@ func (p *paymentRecordRepoRedis) FetchPaymentStatus(ctx context.Context, id uuid
 	}
 
 	return result.Data.Status, nil
+}
+
+func (p *paymentRecordRepoRedis) Store(ctx context.Context, tx *sql.Tx, paymentRecord *entity.PaymentRecord) error {
+	return tx.QueryRowContext(
+		ctx,
+		"INSERT INTO payment_records (id, tag, description, amount, status) VALUES ($1, $2, $3, $4, $5) RETURNING created_at, updated_at",
+		paymentRecord.ID, paymentRecord.Tag, paymentRecord.Description, paymentRecord.Amount, paymentRecord.Status,
+	).Scan(&paymentRecord.CreatedAt, &paymentRecord.UpdatedAt)
+}
+
+func (p *paymentRecordRepoRedis) FetchByID(ctx context.Context, id uuid.UUID) (*entity.PaymentRecord, error) {
+	var paymentRecord entity.PaymentRecord
+	err := p.DB.QueryRowContext(ctx, "SELECT id, tag, amount, status, created_at, updated_at FROM payment_records WHERE id = $1 AND deleted_at is null", id).
+		Scan(&paymentRecord.ID, &paymentRecord.Tag, &paymentRecord.Amount, &paymentRecord.Status, &paymentRecord.CreatedAt, &paymentRecord.UpdatedAt)
+
+	if err != nil {
+		return nil, err
+	}
+	return &paymentRecord, nil
+}
+
+func (p *paymentRecordRepoRedis) FetchByIDRedis(ctx context.Context, id uuid.UUID) (int64, error) {
+	redisKey := fmt.Sprintf("kafka:seen:%s", id.String())
+	return p.redisClient.Exists(ctx, redisKey).Result()
+}
+
+func (p *paymentRecordRepoRedis) StoreRedis(ctx context.Context, id uuid.UUID) error {
+	redisKey := fmt.Sprintf("kafka:seen:%s", id.String())
+	return p.redisClient.Set(ctx, redisKey, "1", 10*time.Minute).Err()
 }

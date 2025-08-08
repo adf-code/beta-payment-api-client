@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS payment_records (
     tag TEXT NOT NULL,
     description TEXT NOT NULL,
     amount NUMERIC(12, 2) NOT NULL,
-    status TEXT NOT NULL DEFAULT 'PENDING',
+    status TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP

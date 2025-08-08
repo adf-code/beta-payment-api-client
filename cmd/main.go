@@ -28,7 +28,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 	"net/http"
@@ -55,8 +54,8 @@ func main() {
 		logger.Fatal().Err(err).Msg("Cannot reach payment server")
 	}
 
-	repo := repository.NewPaymentRecordRepository(redisClient, kafkaProducer, kafkaConsumer, cfg.PaymentServerAPIKey, cfg.KafkaTopicPaymentSuccess)
-	paymentRecordUC := usecase.NewPaymentRecordUseCase(repo)
+	paymentRecordRepo := repository.NewPaymentRecordRepository(redisClient, kafkaProducer, kafkaConsumer, db, cfg.PaymentServerAPIKey, cfg.KafkaTopicPaymentSuccess)
+	paymentRecordUC := usecase.NewPaymentRecordUseCase(paymentRecordRepo, db, logger)
 
 	// Start Kafka consumer
 	_ = paymentRecordUC.StartConsumer(context.Background())
@@ -97,17 +96,17 @@ func main() {
 	closePostgres(db, logger)
 
 	logger.Info().Msgf("✅ Server shutdown completed.")
-	// ====== End update disini
-	// Start polling manually for testing
-	paymentIDs := []string{"73f51a05-188e-4fac-ad6c-f806dca5da6d", "a9736df9-8874-4207-b0ad-401957a6aee1", "ead91c6e-c72a-484c-95dc-2f8067c06ec1"}
-	for _, idStr := range paymentIDs {
-		id, err := uuid.Parse(idStr)
-		if err == nil {
-			_ = paymentRecordUC.StartPolling(context.Background(), id)
-		}
-	}
-
-	select {} // block
+	//// ====== End update disini
+	//// Start polling manually for testing
+	//paymentIDs := []string{"73f51a05-188e-4fac-ad6c-f806dca5da6d", "a9736df9-8874-4207-b0ad-401957a6aee1", "ead91c6e-c72a-484c-95dc-2f8067c06ec1"}
+	//for _, idStr := range paymentIDs {
+	//	id, err := uuid.Parse(idStr)
+	//	if err == nil {
+	//		_ = paymentRecordUC.StartPolling(context.Background(), id)
+	//	}
+	//}
+	//
+	//select {} // block
 }
 
 func closePostgres(db *sql.DB, logger zerolog.Logger) {
