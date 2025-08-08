@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+var seen sync.Map
+
 type PaymentRecordUseCase interface {
 	StartPolling(ctx context.Context, id uuid.UUID) error
 	StartConsumer(ctx context.Context) error
@@ -94,29 +96,15 @@ func (u *paymentRecordUseCase) StartConsumer(ctx context.Context) error {
 					log.Println("Kafka error:", err)
 					continue
 				}
-
 				paymentID, err := uuid.Parse(paymentIDStr)
 				if err != nil {
 					log.Println("Invalid UUID:", paymentIDStr)
 					continue
 				}
 
-				// Deduplication check using Redis
-				exists, err := u.paymentRecordRepo.FetchByIDRedis(ctx, paymentID)
-				if err != nil {
-					log.Println("Redis error:", err)
-					continue
-				}
-
-				if exists > 0 {
-					log.Println("🔁 Kafka message already processed, skipping:", paymentID)
-					continue
-				}
-
-				// Set the key in Redis to mark as seen
-				err = u.paymentRecordRepo.StoreRedis(ctx, paymentID)
-				if err != nil {
-					log.Println("Failed to set dedup key in Redis:", err)
+				// Deduplication logic
+				if _, loaded := seen.LoadOrStore(paymentID.String(), true); loaded {
+					log.Println("🔁 Duplicate message ignored:", paymentID)
 					continue
 				}
 
