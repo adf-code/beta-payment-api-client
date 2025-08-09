@@ -55,7 +55,8 @@ func main() {
 	}
 
 	paymentRecordRepo := repository.NewPaymentRecordRepository(redisClient, kafkaProducer, kafkaConsumer, db, cfg.PaymentServerAPIKey, cfg.KafkaTopicPaymentSuccess)
-	paymentRecordUC := usecase.NewPaymentRecordUseCase(paymentRecordRepo, db, logger)
+	paymentRecordCheckLogRepo := repository.NewPaymentRecordCheckLogRepository(db, logger)
+	paymentRecordUC := usecase.NewPaymentRecordUseCase(paymentRecordRepo, paymentRecordCheckLogRepo, db, logger)
 
 	// Start Kafka consumer
 	_ = paymentRecordUC.RestorePollingTasks(context.Background())

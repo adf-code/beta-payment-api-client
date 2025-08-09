@@ -8,12 +8,6 @@ import (
 
 type PaymentStatus string
 
-const (
-	StatusPaid    PaymentStatus = "PAID"
-	StatusUnpaid  PaymentStatus = "UNPAID"
-	StatusPending PaymentStatus = "PENDING"
-)
-
 type PaymentRecord struct {
 	ID          uuid.UUID            `json:"id"`
 	Tag         string               `json:"tag"`
