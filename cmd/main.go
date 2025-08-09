@@ -17,6 +17,8 @@ package main
 import (
 	"beta-payment-api-client/config"
 	_ "beta-payment-api-client/docs"
+	deliveryHttp "beta-payment-api-client/internal/delivery/http"
+	pkgDatabase "beta-payment-api-client/internal/pkg/database"
 	pkgKafka "beta-payment-api-client/internal/pkg/kafka"
 	pkgLogger "beta-payment-api-client/internal/pkg/logger"
 	pkgPaymentServer "beta-payment-api-client/internal/pkg/payment_server"
@@ -24,8 +26,15 @@ import (
 	"beta-payment-api-client/internal/repository"
 	"beta-payment-api-client/internal/usecase"
 	"context"
-	"github.com/google/uuid"
+	"database/sql"
+	"fmt"
 	"github.com/joho/godotenv"
+	"github.com/rs/zerolog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 )
 
 func main() {
@@ -33,6 +42,8 @@ func main() {
 	cfg := config.LoadConfig()
 	logger := pkgLogger.InitLoggerWithTelemetry(cfg)
 
+	postgresClient := pkgDatabase.NewPostgresClient(cfg, logger)
+	db := postgresClient.InitPostgresDB()
 	redisClient := pkgRedis.NewRedisClient(cfg, logger).InitRedis()
 	kafkaProducer := pkgKafka.NewKafkaProducerClient(cfg, logger).InitKafkaProducer()
 	kafkaConsumer := pkgKafka.NewKafkaConsumerClient(cfg, logger).InitKafkaConsumer()
@@ -43,20 +54,66 @@ func main() {
 		logger.Fatal().Err(err).Msg("Cannot reach payment server")
 	}
 
-	repo := repository.NewPaymentRecordRepository(redisClient, kafkaProducer, kafkaConsumer, cfg.PaymentServerAPIKey, cfg.KafkaTopicPaymentSuccess)
-	paymentRecordUC := usecase.NewPaymentRecordUseCase(repo)
+	paymentRecordRepo := repository.NewPaymentRecordRepository(redisClient, kafkaProducer, kafkaConsumer, db, cfg.PaymentServerAPIKey, cfg.KafkaTopicPaymentSuccess)
+	paymentRecordUC := usecase.NewPaymentRecordUseCase(paymentRecordRepo, db, logger)
 
 	// Start Kafka consumer
+	_ = paymentRecordUC.RestorePollingTasks(context.Background())
 	_ = paymentRecordUC.StartConsumer(context.Background())
 
-	// Start polling manually for testing
-	paymentIDs := []string{"73f51a05-188e-4fac-ad6c-f806dca5da6d", "a9736df9-8874-4207-b0ad-401957a6aee1", "ead91c6e-c72a-484c-95dc-2f8067c06ec1"}
-	for _, idStr := range paymentIDs {
-		id, err := uuid.Parse(idStr)
-		if err == nil {
-			_ = paymentRecordUC.StartPolling(context.Background(), id)
+	// ====== Update dari sini
+	handler := deliveryHttp.SetupHandler(paymentRecordUC, logger)
+
+	// HTTP server config
+	server := &http.Server{
+		Addr:    fmt.Sprintf(":%s", cfg.Port),
+		Handler: handler,
+	}
+	go func() {
+		logger.Info().Msgf("🟢 Server running on http://localhost:%s", cfg.Port)
+		logger.Info().Msgf("📚 Swagger running on http://localhost:%s/swagger/index.html", cfg.Port)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatal().Err(err).Msgf("❌ Server failed: %v", err)
 		}
+	}()
+
+	// Setup signal listener
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	logger.Info().Msgf("🛑 Gracefully shutting down server...")
+
+	// Graceful shutdown context
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Shutdown HTTP server
+	if err := server.Shutdown(ctx); err != nil {
+		logger.Fatal().Err(err).Msgf("❌ Server shutdown failed: %v", err)
 	}
 
-	select {} // block
+	// ✅ Close PostgreSQL DB
+	closePostgres(db, logger)
+
+	logger.Info().Msgf("✅ Server shutdown completed.")
+	//// ====== End update disini
+	//// Start polling manually for testing
+	//paymentIDs := []string{"73f51a05-188e-4fac-ad6c-f806dca5da6d", "a9736df9-8874-4207-b0ad-401957a6aee1", "ead91c6e-c72a-484c-95dc-2f8067c06ec1"}
+	//for _, idStr := range paymentIDs {
+	//	id, err := uuid.Parse(idStr)
+	//	if err == nil {
+	//		_ = paymentRecordUC.StartPolling(context.Background(), id)
+	//	}
+	//}
+	//
+	//select {} // block
+}
+
+func closePostgres(db *sql.DB, logger zerolog.Logger) {
+	if err := db.Close(); err != nil {
+		logger.Info().Msgf("⚠️ Failed to close PostgreSQL connection: %v", err)
+	} else {
+		logger.Info().Msgf("🔒 PostgreSQL connection closed.")
+	}
 }
