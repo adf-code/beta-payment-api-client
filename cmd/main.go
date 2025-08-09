@@ -58,6 +58,7 @@ func main() {
 	paymentRecordUC := usecase.NewPaymentRecordUseCase(paymentRecordRepo, db, logger)
 
 	// Start Kafka consumer
+	_ = paymentRecordUC.RestorePollingTasks(context.Background())
 	_ = paymentRecordUC.StartConsumer(context.Background())
 
 	// ====== Update dari sini

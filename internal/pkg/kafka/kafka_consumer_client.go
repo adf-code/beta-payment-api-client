@@ -32,21 +32,15 @@ func NewKafkaConsumerClient(cfg *config.AppConfig, logger zerolog.Logger) *Kafka
 
 func (k *KafkaConsumerClient) InitKafkaConsumer() *KafkaConsumerClient {
 	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers: []string{fmt.Sprintf("%s:%s", k.KafkaHost, k.KafkaPort)},
-		Topic:   k.KafkaTopicPaymentSuccess,
-		GroupID: "payment-checker-group",
-
-		// ⏱️ Lebih toleran terhadap broker yang baru ready
-		MinBytes: 1,               // Minimum fetch size (1B)
-		MaxBytes: 10e6,            // Maximum fetch size (10MB)
-		MaxWait:  3 * time.Second, // Max time to wait for message
-
-		// 🔁 Auto commit bisa diatur manual jika perlu kontrol penuh
-		CommitInterval: time.Second, // default 1s, auto commit offset
-
-		// 🧠 Untuk debug startup
-		StartOffset: kafka.FirstOffset, // bisa diganti ke LastOffset sesuai use case
-		Logger:      log.New(os.Stdout, "kafka reader: ", 0),
+		Brokers:        []string{fmt.Sprintf("%s:%s", k.KafkaHost, k.KafkaPort)},
+		Topic:          k.KafkaTopicPaymentSuccess,
+		GroupID:        "payment-checker-group",
+		MinBytes:       1,                // 1B
+		MaxBytes:       10e6,             // 10MB
+		MaxWait:        10 * time.Second, // Tunggu sampai batch cukup atau timeout
+		CommitInterval: 1 * time.Second,  // Auto commit setiap detik
+		StartOffset:    kafka.LastOffset, // Hanya baca message baru
+		Logger:         log.New(os.Stdout, "[Kafka Reader] ", log.LstdFlags),
 	})
 	k.Reader = reader
 	return k

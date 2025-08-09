@@ -34,6 +34,9 @@ type PaymentRecordRepository interface {
 	FetchByID(ctx context.Context, id uuid.UUID) (*entity.PaymentRecord, error)
 	FetchByIDRedis(ctx context.Context, id uuid.UUID) (int64, error)
 	StoreRedis(ctx context.Context, id uuid.UUID) error
+	PersistPollingTask(ctx context.Context, id uuid.UUID) error
+	RemovePollingTask(ctx context.Context, id uuid.UUID) error
+	RestorePollingTasks(ctx context.Context) ([]uuid.UUID, error)
 }
 
 type paymentRecordRepoRedis struct {
@@ -159,4 +162,30 @@ func (p *paymentRecordRepoRedis) FetchByIDRedis(ctx context.Context, id uuid.UUI
 func (p *paymentRecordRepoRedis) StoreRedis(ctx context.Context, id uuid.UUID) error {
 	redisKey := fmt.Sprintf("kafka:seen:%s", id.String())
 	return p.redisClient.Set(ctx, redisKey, "1", 10*time.Minute).Err()
+}
+
+func (p *paymentRecordRepoRedis) PersistPollingTask(ctx context.Context, id uuid.UUID) error {
+	return p.redisClient.SAdd(ctx, "polling_tasks", id.String()).Err()
+}
+
+func (p *paymentRecordRepoRedis) RemovePollingTask(ctx context.Context, id uuid.UUID) error {
+	return p.redisClient.SRem(ctx, "polling_tasks", id.String()).Err()
+}
+
+func (p *paymentRecordRepoRedis) RestorePollingTasks(ctx context.Context) ([]uuid.UUID, error) {
+	ids, err := p.redisClient.SMembers(ctx, "polling_tasks").Result()
+	if err != nil {
+		return nil, err
+	}
+
+	var result []uuid.UUID
+	for _, idStr := range ids {
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			log.Println("❌ Invalid UUID in Redis:", idStr)
+			continue
+		}
+		result = append(result, id)
+	}
+	return result, nil
 }

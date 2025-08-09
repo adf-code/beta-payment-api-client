@@ -4,6 +4,7 @@ import (
 	"beta-payment-api-client/config"
 	"bytes"
 	"github.com/rs/zerolog"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -24,15 +25,20 @@ func NewTelemetryClient(apiKey string, endpoint string) *TelemetryClient {
 }
 
 func InitLoggerWithTelemetry(cfg *config.AppConfig) zerolog.Logger {
-	if cfg.TelemetryAPIKey == "" || cfg.TelemetryEndpoint == "" {
-		panic("Telemetry config is not set")
+	consoleWriter := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
+
+	var writer io.Writer = consoleWriter
+
+	if cfg.TelemetryEnabled == "true" {
+		if cfg.TelemetryAPIKey == "" || cfg.TelemetryEndpoint == "" {
+			panic("Telemetry config is not set")
+		}
+
+		telemetryWriter := NewTelemetryClient(cfg.TelemetryAPIKey, cfg.TelemetryEndpoint)
+		writer = zerolog.MultiLevelWriter(consoleWriter, telemetryWriter)
 	}
 
-	consoleWriter := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
-	telemetryWriter := NewTelemetryClient(cfg.TelemetryAPIKey, cfg.TelemetryEndpoint)
-	multiWriter := zerolog.MultiLevelWriter(consoleWriter, telemetryWriter)
-
-	return zerolog.New(multiWriter).With().Timestamp().Logger()
+	return zerolog.New(writer).With().Timestamp().Logger()
 }
 
 func (t *TelemetryClient) Write(p []byte) (n int, err error) {
