@@ -99,7 +99,7 @@ func (p *paymentRecordRepoRedis) ReadKafkaMessage(ctx context.Context) (string, 
 	return string(msg.Value), nil
 }
 
-func (p *paymentRecordRepoRedis) FetchPaymentStatus(ctx context.Context, id uuid.UUID) (string, *entity.PaymentRecordCheckHTTP, error) {
+func (p *paymentRecordRepoRedis) FetchPaymentStatusYangLama(ctx context.Context, id uuid.UUID) (string, *entity.PaymentRecordCheckHTTP, error) {
 	url := fmt.Sprintf("http://localhost:8080/api/v1/payments/%s", id.String())
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -131,6 +131,69 @@ func (p *paymentRecordRepoRedis) FetchPaymentStatus(ctx context.Context, id uuid
 	}
 
 	return result.Data.Status, &entity.PaymentRecordCheckHTTP{Context: ctx, ID: id, Request: req, ResponseBody: body, StatusCode: resp.StatusCode}, nil
+}
+
+func (p *paymentRecordRepoRedis) FetchPaymentStatus(ctx context.Context, id uuid.UUID) (string, *entity.PaymentRecordCheckHTTP, error) {
+	url := fmt.Sprintf("http://localhost:8080/api/v1/payments/%s", id.String())
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		log.Println("❌ Failed to create request:", err)
+		return "", nil, err
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", p.paymentServerAPIKey))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Println("❌ HTTP request failed:", err)
+		return "", &entity.PaymentRecordCheckHTTP{
+			Context:      ctx,
+			ID:           id,
+			Request:      req,
+			Response:     nil, // gagal sebelum resp
+			ResponseBody: nil,
+			StatusCode:   0,
+		}, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("❌ Failed to read body:", err)
+		return "", &entity.PaymentRecordCheckHTTP{
+			Context:      ctx,
+			ID:           id,
+			Request:      req,
+			Response:     resp, // ada header/status
+			ResponseBody: nil,
+			StatusCode:   resp.StatusCode,
+		}, err
+	}
+
+	log.Println("📦 Payment API response:", string(body))
+
+	var result dto.GetPaymentByIDResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		log.Println("❌ Failed to unmarshal JSON:", err)
+		// kirim juga objek untuk logging
+		return "", &entity.PaymentRecordCheckHTTP{
+			Context:      ctx,
+			ID:           id,
+			Request:      req,
+			Response:     resp,
+			ResponseBody: body,
+			StatusCode:   resp.StatusCode,
+		}, err
+	}
+
+	return result.Data.Status, &entity.PaymentRecordCheckHTTP{
+		Context:      ctx,
+		ID:           id,
+		Request:      req,
+		Response:     resp,
+		ResponseBody: body,
+		StatusCode:   resp.StatusCode,
+	}, nil
 }
 
 func (p *paymentRecordRepoRedis) Store(ctx context.Context, tx *sql.Tx, paymentRecord *entity.PaymentRecord) error {
